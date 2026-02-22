@@ -1153,7 +1153,7 @@ export function DetectionEngine() {
                     <span className="text-white font-medium">{item.value}</span>
                   </div>
                 ))}
-            </div>
+              </div>
 
               {modelStatus === "loading" && (
                 <div className="space-y-1.5">
