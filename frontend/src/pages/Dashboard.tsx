@@ -80,7 +80,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Surveillance Dashboard</h1>
+          <h1 className="text-2xl font-bold text-white">PedTrack AI</h1>
           <p className="text-slate-400 text-sm mt-1">
             Real-time pedestrian detection & tracking overview
           </p>
