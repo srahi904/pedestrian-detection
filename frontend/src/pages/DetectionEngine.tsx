@@ -426,7 +426,6 @@ export function DetectionEngine() {
 
         const endTime = performance.now();
         const infTime = Math.round(endTime - startTime);
-        setInferenceTime(infTime);
 
         const result: FrameResult = {
           frameNumber: frameCounterRef.current,
@@ -439,21 +438,22 @@ export function DetectionEngine() {
         maxCountRef.current = Math.max(maxCountRef.current, tracked.length);
         totalCountRef.current += tracked.length;
 
-        setCurrentPersonCount(tracked.length);
-        setMaxPersonCount(maxCountRef.current);
-        setProcessedFrames(frameCounterRef.current);
-
-        // Batch update frameResults every 10 frames to avoid too many re-renders
-        if (frameCounterRef.current % 10 === 0) {
-          setFrameResults([...allResultsRef.current]);
+        // Batch update component state to avoid choking the React render cycle
+        if (frameCounterRef.current % 30 === 0) {
+          setFrameResults(() => [...allResultsRef.current]);
+          setCurrentPersonCount(tracked.length);
+          setMaxPersonCount(maxCountRef.current);
+          setProcessedFrames(frameCounterRef.current);
+          setInferenceTime(infTime);
+          setFps(fpsRef.current);
         }
 
-        // FPS calculation
+
+        // FPS calculation (state update removed from hot loop to prevent re-renders)
         fpsCountRef.current++;
         const now = performance.now();
         if (now - lastFpsTimeRef.current >= 1000) {
-          const currentFps = fpsCountRef.current;
-          setFps(currentFps);
+          fpsRef.current = fpsCountRef.current; // Update ref directly for canvas drawing
           fpsCountRef.current = 0;
           lastFpsTimeRef.current = now;
         }
