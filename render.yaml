@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: pedestrian-detection-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      - key: CORS_ORIGINS
+        value: "https://your-project.vercel.app,http://localhost:5173"
