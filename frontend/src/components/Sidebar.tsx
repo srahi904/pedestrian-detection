@@ -12,7 +12,9 @@ import {
   Footprints,
   WifiOff,
   Hammer,
-  ClipboardList
+  ClipboardList,
+  Download,
+  ExternalLink
 } from "lucide-react";
 import type { Page } from "../App";
 import { cn } from "../utils/cn";
@@ -26,7 +28,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ currentPage, onNavigate, collapsed, onToggle }: SidebarProps) {
-  const { alerts, systemHealth, stats } = useApp();
+  const { alerts, systemHealth, statusMessage } = useApp();
   const unacknowledgedAlerts = alerts.filter(a => !a.acknowledged).length;
 
   const navItems = [
@@ -100,43 +102,65 @@ export function Sidebar({ currentPage, onNavigate, collapsed, onToggle }: Sideba
         })}
       </nav>
 
-      {/* System Status */}
+      {/* System Status — clickable to navigate to Logs when not online */}
       {!collapsed && (
-        <div className={cn(
-          "p-4 mx-3 mb-3 rounded-xl border",
-          systemHealth === "online" ? "bg-gradient-to-br from-emerald-500/10 to-green-500/10 border-emerald-500/20" :
-          systemHealth === "maintenance" ? "bg-gradient-to-br from-amber-500/10 to-orange-500/10 border-amber-500/20" :
-          "bg-gradient-to-br from-red-500/10 to-pink-500/10 border-red-500/20"
-        )}>
+        <div
+          onClick={() => systemHealth !== "online" && onNavigate("logs" as Page)}
+          className={cn(
+            "p-4 mx-3 mb-3 rounded-xl border transition-all duration-200",
+            systemHealth === "online" ? "bg-gradient-to-br from-emerald-500/10 to-green-500/10 border-emerald-500/20" :
+            systemHealth === "maintenance" ? "bg-gradient-to-br from-amber-500/10 to-orange-500/10 border-amber-500/20 cursor-pointer hover:border-amber-500/40" :
+            systemHealth === "loading_model" ? "bg-gradient-to-br from-cyan-500/10 to-blue-500/10 border-cyan-500/20 cursor-pointer hover:border-cyan-500/40" :
+            "bg-gradient-to-br from-red-500/10 to-pink-500/10 border-red-500/20 cursor-pointer hover:border-red-500/40"
+          )}>
           <div className="flex items-center gap-2 mb-2">
             {systemHealth === "online" ? <ShieldCheck className="h-4 w-4 text-emerald-400" /> :
              systemHealth === "maintenance" ? <Hammer className="h-4 w-4 text-amber-400" /> :
+             systemHealth === "loading_model" ? <Download className="h-4 w-4 text-cyan-400 animate-bounce" /> :
              <WifiOff className="h-4 w-4 text-red-400" />}
             <span className={cn(
-              "text-xs font-semibold capitalize",
+              "text-xs font-semibold",
               systemHealth === "online" ? "text-emerald-400" :
               systemHealth === "maintenance" ? "text-amber-400" :
+              systemHealth === "loading_model" ? "text-cyan-400" :
               "text-red-400"
-            )}>System {systemHealth}</span>
-          </div>
-          <p className="text-[11px] text-slate-400">
-             {systemHealth === "online" ? `Processing ${stats.gpuUtilization}% GPU load` : "Check server logs"}
-          </p>
-          <div className="flex items-center gap-2 mt-2">
-            <div className={cn(
-              "h-1.5 w-1.5 rounded-full animate-pulse",
-              systemHealth === "online" ? "bg-emerald-400" :
-              systemHealth === "maintenance" ? "bg-amber-400" :
-              "bg-red-400"
-            )} />
-            <span className={cn(
-              "text-[10px]",
-              systemHealth === "online" ? "text-emerald-400/70" :
-              systemHealth === "maintenance" ? "text-amber-400/70" :
-              "text-red-400/70"
             )}>
-              {systemHealth === "online" ? "Live Feed Active" : "Stream Paused"}
+              {systemHealth === "online" ? "System Online" :
+               systemHealth === "loading_model" ? "Downloading Model..." :
+               systemHealth === "maintenance" ? "System Maintenance" :
+               "System Offline"}
             </span>
+          </div>
+          <p className="text-[11px] text-slate-400 leading-relaxed">
+             {statusMessage}
+          </p>
+          <div className="flex items-center justify-between mt-2">
+            <div className="flex items-center gap-2">
+              <div className={cn(
+                "h-1.5 w-1.5 rounded-full animate-pulse",
+                systemHealth === "online" ? "bg-emerald-400" :
+                systemHealth === "maintenance" ? "bg-amber-400" :
+                systemHealth === "loading_model" ? "bg-cyan-400" :
+                "bg-red-400"
+              )} />
+              <span className={cn(
+                "text-[10px]",
+                systemHealth === "online" ? "text-emerald-400/70" :
+                systemHealth === "maintenance" ? "text-amber-400/70" :
+                systemHealth === "loading_model" ? "text-cyan-400/70" :
+                "text-red-400/70"
+              )}>
+                {systemHealth === "online" ? "Live Feed Active" :
+                 systemHealth === "loading_model" ? "Feed Paused — Reloading" :
+                 systemHealth === "maintenance" ? "Scheduled Maintenance" :
+                 "Stream Paused"}
+              </span>
+            </div>
+            {systemHealth !== "online" && (
+              <span className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 transition-colors">
+                View Logs <ExternalLink className="h-2.5 w-2.5" />
+              </span>
+            )}
           </div>
         </div>
       )}

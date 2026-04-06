@@ -5,7 +5,7 @@ const API_URL = `${API_BASE}/api/v1`;
 
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 5000,
+  timeout: 30000,
 });
 
 export interface Camera {
@@ -49,10 +49,10 @@ export const AppAPI = {
     }
   },
   
-  // Helper to check backend health
-  checkHealth: async (): Promise<{ status: string; model_loading?: boolean } | boolean> => {
+  // Helper to check backend health (shorter timeout — just a ping)
+  checkHealth: async (): Promise<{ status: string; model_loading?: boolean; status_detail?: string; current_model?: string } | boolean> => {
     try {
-      const response = await api.get('/health');
+      const response = await api.get('/health', { timeout: 10000 });
       return response.data;
     } catch (e) {
       return false;
@@ -77,7 +77,8 @@ export const AppAPI = {
         nms_iou_threshold: settings.nmsThreshold,
         model_variant: settings.model
       };
-      const response = await api.put('/settings/threshold', payload);
+      // Longer timeout because model switching can trigger a download/reload
+      const response = await api.put('/settings/threshold', payload, { timeout: 60000 });
       return response.data;
     } catch (error) {
        console.error('API Error: Failed to update settings', error);

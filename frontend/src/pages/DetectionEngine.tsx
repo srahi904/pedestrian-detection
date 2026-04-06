@@ -22,6 +22,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "../utils/cn";
+import { PedestrianTracker } from "../utils/tracker";
 
 interface DetectionItem {
   bbox: [number, number, number, number];
@@ -72,8 +73,7 @@ export function DetectionEngine() {
   const modelRef = useRef<any>(null);
   const animRef = useRef<number>(0);
   const trailsRef = useRef<Map<number, Array<{ x: number; y: number }>>>(new Map());
-  const nextTrackIdRef = useRef(1);
-  const prevDetectionsRef = useRef<DetectionItem[]>([]);
+  const trackerRef = useRef(new PedestrianTracker());
   const isProcessingRef = useRef(false);
   const frameCounterRef = useRef(0);
   const lastFpsTimeRef = useRef(0);
@@ -170,8 +170,7 @@ export function DetectionEngine() {
     setFps(0);
     setInferenceTime(0);
     trailsRef.current.clear();
-    nextTrackIdRef.current = 1;
-    prevDetectionsRef.current = [];
+    trackerRef.current.reset();
     allResultsRef.current = [];
     maxCountRef.current = 0;
     totalCountRef.current = 0;
@@ -216,47 +215,9 @@ export function DetectionEngine() {
     e.stopPropagation();
   }, []);
 
-  // IoU tracking
-  const computeIoU = (a: [number, number, number, number], b: [number, number, number, number]) => {
-    const [ax, ay, aw, ah] = a;
-    const [bx, by, bw, bh] = b;
-    const x1 = Math.max(ax, bx);
-    const y1 = Math.max(ay, by);
-    const x2 = Math.min(ax + aw, bx + bw);
-    const y2 = Math.min(ay + ah, by + bh);
-    const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
-    const union = aw * ah + bw * bh - inter;
-    return union > 0 ? inter / union : 0;
-  };
-
-  const assignTrackIds = (detections: DetectionItem[]): DetectionItem[] => {
-    const prev = prevDetectionsRef.current;
-    const assigned = new Set<number>();
-    const result: DetectionItem[] = [];
-
-    for (const det of detections) {
-      let bestId = -1;
-      let bestIoU = 0.3;
-      for (const p of prev) {
-        if (p.trackId !== undefined && !assigned.has(p.trackId)) {
-          const iou = computeIoU(det.bbox, p.bbox);
-          if (iou > bestIoU) {
-            bestIoU = iou;
-            bestId = p.trackId;
-          }
-        }
-      }
-      if (bestId >= 0) {
-        assigned.add(bestId);
-        result.push({ ...det, trackId: bestId });
-      } else {
-        const newId = nextTrackIdRef.current++;
-        result.push({ ...det, trackId: newId });
-      }
-    }
-
-    prevDetectionsRef.current = result;
-    return result;
+  // Use the robust tracker for persistent ID assignment
+  const runTracker = (detections: DetectionItem[]): DetectionItem[] => {
+    return trackerRef.current.update(detections, canvasRef.current);
   };
 
   // Draw overlay using refs for current settings
@@ -410,7 +371,7 @@ export function DetectionEngine() {
             score: p.score as number,
           }));
 
-        const tracked = assignTrackIds(personDetections);
+        const tracked = runTracker(personDetections);
 
         // Update trails
         for (const det of tracked) {
@@ -488,8 +449,7 @@ export function DetectionEngine() {
     setCurrentPersonCount(0);
     setFps(0);
     trailsRef.current.clear();
-    nextTrackIdRef.current = 1;
-    prevDetectionsRef.current = [];
+    trackerRef.current.reset();
     allResultsRef.current = [];
     maxCountRef.current = 0;
     totalCountRef.current = 0;
@@ -567,8 +527,7 @@ export function DetectionEngine() {
     setFps(0);
     setInferenceTime(0);
     trailsRef.current.clear();
-    nextTrackIdRef.current = 1;
-    prevDetectionsRef.current = [];
+    trackerRef.current.reset();
     allResultsRef.current = [];
     maxCountRef.current = 0;
     totalCountRef.current = 0;

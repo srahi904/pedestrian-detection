@@ -5,6 +5,7 @@ import random
 import numpy as np
 import cv2
 from pydantic import BaseModel
+from app.core.logging import add_log, system_logs
 
 router = APIRouter()
 
@@ -71,13 +72,15 @@ async def root():
 
 @router.get("/health")
 async def health_check():
-    from app.core.globals import detector
+    from app.core.globals import detector, app_settings
     status = "loading_model" if detector.is_loading else "ok"
     return {
         "status": status, 
         "service": "pedtrack-backend", 
         "uptime": "99.9%",
-        "model_loading": detector.is_loading
+        "model_loading": detector.is_loading,
+        "status_detail": detector.status_message,
+        "current_model": app_settings.get("model_variant", "unknown")
     }
 
 # ... (other routes) ...
@@ -99,15 +102,20 @@ async def update_threshold(settings: SettingsUpdate, background_tasks: Backgroun
     
     # Update detector params
     detector.CONFIDENCE_THRESHOLD = settings.confidence_threshold
+    add_log("INFO", "Settings", f"Confidence threshold updated to {settings.confidence_threshold:.0%}")
+    add_log("INFO", "Settings", f"NMS IoU threshold updated to {settings.nms_iou_threshold:.0%}")
     
     # Handle model switch
     if settings.model_variant and settings.model_variant != app_settings["model_variant"]:
+        old_model = app_settings["model_variant"]
         app_settings["model_variant"] = settings.model_variant
+        add_log("INFO", "Settings", f"Model variant changed: {old_model} → {settings.model_variant}")
         try:
              # Run in background to avoid blocking response
              background_tasks.add_task(detector.reload_model, settings.model_variant)
+             add_log("INFO", "Model", f"Background model reload initiated for {settings.model_variant}")
         except Exception as e:
-            print(f"Failed to initiate model reload: {e}")
+            add_log("ERROR", "Model", f"Failed to initiate model reload: {e}")
             
     return {
         "confidence_threshold": settings.confidence_threshold,
@@ -187,6 +195,7 @@ async def get_alerts():
 async def acknowledge_all_alerts():
     for alert in mock_alerts:
         alert["acknowledged"] = True
+    add_log("INFO", "System", "All alerts acknowledged by user")
     return {"status": "success", "message": "All alerts acknowledged"}
 
 # --- Stats Endpoints ---
@@ -253,21 +262,6 @@ class LogEntry(BaseModel):
     level: str  # INFO, WARNING, ERROR, CRITICAL
     source: str # System, Camera, Model, API
     message: str
-
-# In-memory log store (circular buffer style)
-system_logs = []
-
-def add_log(level: str, source: str, message: str):
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
-    entry = {
-        "timestamp": timestamp,
-        "level": level,
-        "source": source,
-        "message": message
-    }
-    system_logs.insert(0, entry) # Prepend for newest first
-    if len(system_logs) > 1000: # Keep last 1000 logs
-        system_logs.pop()
 
 # Seed initial logs
 add_log("INFO", "System", "System initialized successfully")

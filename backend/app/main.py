@@ -3,41 +3,22 @@ from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.core.globals import detector, tracker
+from app.core.logging import add_log
 from app.api.routes import router
-
-def download_model_from_hf():
-    """Download YOLOv8 weights from Hugging Face if not present locally."""
-    model_path = "weights/yolov8s.pt"
-    if not os.path.exists(model_path):
-        print("⬇ Model weights not found locally. Downloading from Hugging Face...")
-        os.makedirs("weights", exist_ok=True)
-        try:
-            from huggingface_hub import hf_hub_download
-            hf_hub_download(
-                repo_id="rahi904/pedestrian-detection",
-                filename="yolov8s.pt",
-                local_dir="weights"
-            )
-            print("✓ Model downloaded from Hugging Face")
-        except Exception as e:
-            print(f"⚠ Failed to download model from HF: {e}")
-            print("  Ultralytics will attempt its own download as fallback.")
-    else:
-        print("✓ Model weights found locally")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: download model if needed, then load
-    download_model_from_hf()
+    # Startup: load model (detector handles HF download + caching internally)
+    add_log("INFO", "System", "PedTrack AI backend starting up...")
     try:
         detector.load_model()
-        print("✓ YOLOv8 model loaded")
+        add_log("INFO", "System", "Startup complete — system ready")
     except Exception as e:
-        print(f"Warning: Could not load YOLOv8 model: {e}")
-        print("Starting in mock/limited mode.")
+        add_log("ERROR", "System", f"Startup model load failed: {e}")
+        add_log("WARNING", "System", "Running in mock/limited mode")
     yield
     # Shutdown: cleanup
-    # detector.cleanup()
+    add_log("INFO", "System", "PedTrack AI backend shutting down...")
 
 app = FastAPI(
     title="PedTrack AI API",

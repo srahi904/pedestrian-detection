@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import {
   cameras as initialCameras,
   recentAlerts as initialAlerts,
@@ -22,6 +22,7 @@ interface AppContextType {
   isLive: boolean;
   setIsLive: (status: boolean) => void;
   systemHealth: "online" | "offline" | "maintenance" | "loading_model";
+  statusMessage: string;
   weeklyStats: typeof weeklyData;
   hourlyStats: typeof hourlyTraffic;
   zoneStats: ZoneData[];
@@ -35,9 +36,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [cameras, setCameras] = useState<CameraFeed[]>(initialCameras);
   const [alerts, setAlerts] = useState<Alert[]>(initialAlerts);
   const [stats, setStats] = useState(initialMetrics);
-  const [recentDetections, setRecentDetections] = useState<Detection[]>([]);
+  const [recentDetections] = useState<Detection[]>([]);
   const [isLive, setIsLive] = useState(true);
   const [systemHealth, setSystemHealth] = useState<"online" | "offline" | "maintenance" | "loading_model">("online");
+  const [statusMessage, setStatusMessage] = useState("Connecting to server...");
   const [weeklyStats, setWeeklyStats] = useState(weeklyData);
   const [hourlyStats, setHourlyStats] = useState(hourlyTraffic);
   const [zoneStats, setZoneStats] = useState<ZoneData[]>(zoneAnalytics);
@@ -47,15 +49,42 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (!isLive) return;
 
+    // Track consecutive failures so one slow poll doesn't flip us to "offline"
+    let failCount = 0;
+    const FAIL_THRESHOLD = 3; // Need 3 consecutive failures to show offline
+
     const fetchData = async () => {
       try {
         // Check health first to see if model is loading
         const health = await AppAPI.checkHealth();
+
+        // Health check itself failed (returned false = network error)
+        if (health === false) {
+          failCount++;
+          if (failCount >= FAIL_THRESHOLD) {
+            setSystemHealth("offline");
+            setStatusMessage("Backend server is unreachable");
+          } else {
+            setStatusMessage(`Connection attempt failed (${failCount}/${FAIL_THRESHOLD})...`);
+          }
+          // Don't fetch other endpoints if health is down
+          return;
+        }
+
+        // Server responded, reset fail counter
+        failCount = 0;
+
+        // Model is currently being reloaded — show loading state but DON'T go offline
         if (typeof health === 'object' && health.model_loading) {
             setSystemHealth("loading_model");
-            // If loading, we might still want to fetch stale data or just return
-            // For now, let's return to avoid timeouts on other endpoints if they depend on model lock
+            setStatusMessage(health.status_detail || "Model is loading...");
+            // Skip fetching other endpoints while model is loading
             return;
+        }
+
+        // Server is healthy — grab the detail message
+        if (typeof health === 'object') {
+          setStatusMessage(health.status_detail || `Active — ${health.current_model || 'unknown'} model`);
         }
 
         const [camerasData, alertsData, sysStats, weekStats, hourStats, znStats, hmStats] = await Promise.all([
@@ -69,9 +98,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         ]);
 
         // Transform backend camera data to frontend CameraFeed interface
-        setCameras(prev => {
+        setCameras(() => {
           return camerasData.map(apiCam => {
-             const existing = prev.find(p => p.id === apiCam.id);
              return {
                id: apiCam.id,
                name: apiCam.name,
@@ -86,7 +114,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         });
 
         // Transform alerts
-        setAlerts(prev => {
+        setAlerts(() => {
            const newAlerts = alertsData.alerts.map((a: any) => ({
              id: a.id,
              type: a.type,
@@ -115,10 +143,23 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         setZoneStats(znStats);
         setHeatmapStats(hmStats);
         
+        // Update status message with live GPU info
+        setStatusMessage(`Processing ${sysStats.gpu_utilization}% GPU load`);
         setSystemHealth("online");
       } catch (err) {
-        console.warn("API connection failed, falling back to simulation", err);
-        setSystemHealth("offline");
+        console.warn("API data fetch failed", err);
+        failCount++;
+        if (failCount >= FAIL_THRESHOLD) {
+          setSystemHealth("offline");
+          const errMsg = (err as any)?.message || "Unknown error";
+          if (errMsg.includes("timeout")) {
+            setStatusMessage("Server response timed out");
+          } else if (errMsg.includes("Network Error")) {
+            setStatusMessage("Network connection lost");
+          } else {
+            setStatusMessage(`Connection error: ${errMsg}`);
+          }
+        }
         
         // Fallback simulation (keep existing logic)
         setCameras((prev) =>
@@ -131,10 +172,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
-    const interval = setInterval(fetchData, 2000);
-    // fetchData(); // Initial fetch - removed to avoid double call on mount with interval?
-    // Actually typically good to keep initial fetch for immediate data
-    fetchData();
+    const interval = setInterval(fetchData, 3000); // Slightly slower polling to give model time to load
+    fetchData(); // Initial fetch
 
     return () => clearInterval(interval);
   }, [isLive]);
@@ -163,6 +202,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         isLive,
         setIsLive,
         systemHealth,
+        statusMessage,
         weeklyStats,
         hourlyStats,
         zoneStats,
